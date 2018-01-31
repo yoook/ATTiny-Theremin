@@ -1,0 +1,65 @@
+NEEDED HARDWARE:
+for the Theremin:
+- 1 ATTiny 25/45/85/25V/45V/85V Microcontroller (I used an ATTiny45, but all others should work as well)
+- 1 HC-SR04 ultrasonic distance measurement module
+- 1 piezo speaker (normal speaker might work as well if used with a resistor. make shure that that the load on each ATTiny pin is below 40mA)
+- some wires, breadboard or PCB
+
+for programming:
+- 1 AVR ISP (in system programmer). I use an mySmartUSB light, which is not the most reliable but usually works. If you use something different, change the Makefile accordingly.
+- possibility to attach the ISP to the board. I have cutted an old Floppy Drive Cable
+- for debugging: an UART level converter (I use a selfmade based on the MAX232)
+
+
+
+
+WIREING:
+                    ┌───_───┐
+     [RESET]    B5 ─┤ 1   8 ├─ VCC
+                    │       │
+ECHO  (PCINT3)  B3 ─┤ 2   7 ├─ B2  TRIGGER
+                    │       │
+Send            B4 ─┤ 3   6 ├─ B1  ( OC1A)  POSOUT
+                    │       │
+               GND ─┤ 4   5 ├─ B0  (/OC1A)  NEGOUT
+                    └───────┘
+
+
+
+
+upside down:
+
+                     ┌───────┐
+NEGOUT  (/OC1A)  B0 ─┤ 5   4 ├─ GND
+                     │       │
+POSOUT  ( OC1A)  B1 ─┤ 6   3 ├─ B4  Send
+                     │       │
+TRIGGER          B2 ─┤ 7   2 ├─ B3  (PCINT3)  ECHO
+                     │       │
+                VCC ─┤ 8 _ 1 ├─ B5  [RESET]
+                     └─── ───┘
+
+ECHO interferes with ISP, if connected to anything else than B3 or B4: no program transmission possible otherwise
+
+
+Timer/Counter0 has this prescaler: 1, 8, 64, 256, 1024
+Timer/Counter1 has many prescaler: 1, 2, 4, 8, ... 16384
+-> use this for TONE, as one prescaler step equals one octave
+
+ECHO: TimerCounter0
+TONE: TimerCounter1
+
+
+NOTES:
+something about playing notes:
+http://www.technoblogy.com/show?KVO
+
+for serial communication: 'sudo moserial'
+
+
+ideas for further improvement:
+*if you need more ports for additional peripherial:
+   -sacrifice the UART and use Pin3/Port B4
+   -sacrifice some volume and connect one side of the speaker to ground (or VCC) instead of Pin5/Port B0 or Pin6/Port B1 and use this. Set Bit COM1Ax in TCCR1 accordingly
+
+*adjust volume by setting OCR1A to something different than OCR1C/2. perhaps even a second ultrasound modul can be used as input?

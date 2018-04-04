@@ -2,6 +2,13 @@
 #define F_CPU 1000000UL // or whatever may be your frequency
 #endif
 
+// uncomment at most on of the following lines for smoothing of the US readout
+//#define SMOOTH_CMI      // channeling measurement interpreter by @Necktschnagge
+//#define SMOOTH_AVR      // weighted average
+#define SMOOTH_MOVING_AVR // moving average
+
+
+
 #define TxDBit BIT(4)   // needs to be defined before including myserial.h
 
 #include <avr/io.h>
@@ -9,9 +16,11 @@
 #include <avr/interrupt.h>
 #include "mydefs.h"
 #include "myserial.h"
+#ifdef SMOOTH_CMI
+	#include "cmi.h"
+#endif
 
 //#define DEBUG_OUTPUT  // send current distance via UART
-//#define DEBUG_TONE    // use artificial distance -> produce smoothly falling tone. (only if something is near ultrasonic sensor)
 
 
 // wireing for this project. don't confuse port/bit and pin!
@@ -22,15 +31,47 @@
 // already defined: TxDBit BIT(4)
 
 
-#define MAX_ECHO_HIGH      0x0B
-#define DIST_OCT           ((MAX_ECHO_HIGH/2)<<8)     // distance per octave
+constexpr uint8_t MAX_ECHO_HIGH{ 0x0B };
+constexpr uint16_t DIST_OCT{ (MAX_ECHO_HIGH/2) << 8 };     // distance per octave
 
-
+constexpr uint8_t OLD_AVR_PERCENTAGE{ 80 };
+constexpr uint8_t NO_AVERAGE{ 20 };
+#ifdef SMOOTH_MOVING_AVR
+	volatile uint16_t avr_window[NO_AVERAGE];
+#endif
+volatile uint8_t curr_window_idx=0;
 volatile uint8_t echo_timer_high;
-volatile uint16_t distance=0;
+volatile uint32_t distance=0;
+volatile uint32_t avr_distance=0;
 
+#ifdef SMOOTH_CMI
+using TAnalyzer = analyzer::ChannellingMeasurementInterpreter<uint32_t, 4>;
+TAnalyzer* channelPointer;
+constexpr uint8_t fixed_comma_position{ 8 };
+#endif
 
 void init(){
+	#ifdef SMOOTH_CMI
+		// setup channels for denoising of US sensor
+		static TAnalyzer::ConstDeltaConfiguration
+			channelConfig((uint32_t(0xC0)) << fixed_comma_position /*channel width*/);
+		channelConfig.weight_old = OLD_AVR_PERCENTAGE;
+		/* assert: (weight_old + weight_new) * (max_measured_value << fixed_comma_position) < (1(U)LL << 32) */
+		channelConfig.weight_new = 100-OLD_AVR_PERCENTAGE;
+		channelConfig.initial_badness = 40;
+		channelConfig.badness_reducer = 9;
+
+		static TAnalyzer channels(channelConfig);
+		channelPointer = &channels;
+	#endif
+
+	#ifdef SMOOTH_MOVING_AVR
+		// initialize array for moving average calculation
+		for (int i=0; i<NO_AVERAGE; i++){
+			avr_window[i] = 0;
+		}
+	#endif
+
 	// configure TONE generator with Timer 1
 		SETOUTPUT(POSOUT);
 		SETOUTPUT(NEGOUT);
@@ -126,13 +167,36 @@ ISR(PCINT0_vect){
 		}
 
 		if (echo_timer_high < MAX_ECHO_HIGH){  // otherwise assume timeout
-			#ifdef DEBUG_TONE
-				distance++; // for debugging only
-			#else
-				distance = ((uint16_t) echo_timer_high) << 8 | TCNT0;
-			#endif
+			distance = ((uint32_t) echo_timer_high) << 8 | TCNT0; //distance = run time of US sensor in timer ticks
+			
+
+#ifdef SMOOTH_CMI
+			//denoise the distance with the channel object
+			uint32_t localDistanceCopy = distance << fixed_comma_position;
+			send_byte(distance >> 8); send_byte(distance & 0xFF);
+			send_byte(channelPointer->input(localDistanceCopy));
+			distance = channelPointer->output() >> fixed_comma_position;
+#endif
+
+#ifdef SMOOTH_AVR
+			//denoise the distance with weighted average
+			avr_distance = (avr_distance*OLD_AVR_PERCENTAGE/100 + distance*(100-OLD_AVR_PERCENTAGE));
+			distance = avr_distance/100;
+#endif
+
+#ifdef SMOOTH_MOVING_AVR
+			//denoise with true moving average
+			avr_window[curr_window_idx++] = static_cast<uint16_t>(distance);
+			curr_window_idx %= NO_AVERAGE;
+			distance = 0;
+			for (int i=0; i<NO_AVERAGE; i++){
+				distance += avr_window[i];
+			}
+			distance /= NO_AVERAGE;
+#endif
+
 			// set tone
-			uint8_t octave = (distance / DIST_OCT + 2) & 0xF; // be shure to get a 4Bit value
+			uint8_t octave = (distance / DIST_OCT + 2) & 0x0F; // be shure to get a 4Bit value
 			uint8_t Tperiod = (uint32_t)(distance % DIST_OCT) * 128 / DIST_OCT + 128;
 
 			TCCR1 = TIMER1_SETTINGS | octave;

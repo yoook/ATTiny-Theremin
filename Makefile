@@ -2,8 +2,8 @@ PROJECT  = main
 PORT     = /dev/serial/by-id/usb-Silicon_Labs_myAVR_-_mySmartUSB_light_mySmartUSBlight-0001-if00-port0
 MCU      = attiny45
 PROTOCOL = stk500v2
-DEPS     = mydefs.h myserial.h
-CFLAGS   = -funsigned-char -funsigned-bitfields -fpack-struct -fshort-enums -Wall -Wextra
+DEPS     = mydefs.h myserial.h cmi.h
+CFLAGS   = -std=c++14 -funsigned-char -funsigned-bitfields -fpack-struct -fshort-enums -Wall -Wextra -fno-threadsafe-statics
 
 
 .PHONY: all, compile, asm, clean, flash, on, off, 3, 5, reset
@@ -17,9 +17,9 @@ all: off $(PROJECT).hex flash on
 
 compile: $(PROJECT).elf
 
-$(PROJECT).elf: $(PROJECT).c $(DEPS)
+$(PROJECT).elf: $(PROJECT).cpp $(DEPS)
 	@echo "compile...."
-	@avr-gcc -mmcu=$(MCU) -Os $(CFLAGS) -g $(PROJECT).c -o $(PROJECT).elf
+	@avr-g++ -mmcu=$(MCU) -Os $(CFLAGS) -g $(PROJECT).cpp -o $(PROJECT).elf
 
 
 $(PROJECT).hex: $(PROJECT).elf
@@ -29,11 +29,11 @@ $(PROJECT).hex: $(PROJECT).elf
 
 asm:
 	@echo "compile to asm...."
-	@avr-gcc -mmcu=$(MCU)  $(CFLAGS) -O0 $(PROJECT).c -S -o $(PROJECT).asm
+	@avr-g++ -mmcu=$(MCU)  $(CFLAGS) -O0 $(PROJECT).cpp -S -o $(PROJECT).asm
 
-$(PROJECT).asm: $(PROJECT).c $(DEPS)
+$(PROJECT).asm: $(PROJECT).cpp $(DEPS)
 	@echo "compile to asm...."
-	@avr-gcc -mmcu=$(MCU)  $(CFLAGS) -O0 $(PROJECT).c -S -o $(PROJECT).asm
+	@avr-g++ -mmcu=$(MCU)  $(CFLAGS) -O0 $(PROJECT).cpp -S -o $(PROJECT).asm
 
 
 clean:

@@ -8,9 +8,15 @@
 import serial
 import time
 import os
+import sys
  
 
-blockSize = 2 #number of bytes belonging together
+blockSize = 3 #number of bytes belonging together
+if len(sys.argv) == 2:
+	try:
+		blockSize = int(sys.argv[1])
+	except:
+		pass
 
 # configure serial port:
 ser = serial.Serial()
